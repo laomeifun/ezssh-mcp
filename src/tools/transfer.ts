@@ -1,5 +1,7 @@
 import { basename, dirname, extname, join } from "path";
 import { uploadFile, downloadFile } from "../ssh/client.js";
+import { getConfig } from "../config.js";
+import { runWithConcurrency } from "../utils.js";
 import type { TransferResult, DirectConnectionOptions } from "../types.js";
 
 /**
@@ -32,35 +34,40 @@ export async function transfer(
   remotePath: string,
   directOptions?: DirectConnectionOptions
 ): Promise<TransferResult[]> {
+  const maxConcurrency = getConfig().maxConcurrency;
+
   if (direction === "upload") {
     // Upload: same local file to multiple hosts
-    const promises = hosts.map((host) =>
-      uploadFile(host, localPath, remotePath, directOptions)
+    return runWithConcurrency(
+      hosts,
+      (host) => uploadFile(host, localPath, remotePath, directOptions),
+      maxConcurrency
     );
-    return Promise.all(promises);
   } else {
     // Download: from multiple hosts to local
     const isMultiHost = hosts.length > 1;
     const hasPlaceholder = localPath.includes("{host}");
 
-    const promises = hosts.map((host) => {
-      let resolvedLocalPath: string;
+    return runWithConcurrency(
+      hosts,
+      (host) => {
+        let resolvedLocalPath: string;
 
-      if (hasPlaceholder) {
-        // Use {host} placeholder
-        resolvedLocalPath = resolveLocalPath(localPath, host);
-      } else if (isMultiHost) {
-        // Add host suffix for multi-host downloads
-        resolvedLocalPath = addHostSuffix(localPath, host);
-      } else {
-        // Single host, use as-is
-        resolvedLocalPath = localPath;
-      }
+        if (hasPlaceholder) {
+          // Use {host} placeholder
+          resolvedLocalPath = resolveLocalPath(localPath, host);
+        } else if (isMultiHost) {
+          // Add host suffix for multi-host downloads
+          resolvedLocalPath = addHostSuffix(localPath, host);
+        } else {
+          // Single host, use as-is
+          resolvedLocalPath = localPath;
+        }
 
-      return downloadFile(host, remotePath, resolvedLocalPath, directOptions);
-    });
-
-    return Promise.all(promises);
+        return downloadFile(host, remotePath, resolvedLocalPath, directOptions);
+      },
+      maxConcurrency
+    );
   }
 }
 

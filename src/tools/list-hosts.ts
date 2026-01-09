@@ -21,9 +21,6 @@ export function formatHostsOutput(hosts: SSHHost[]): string {
     if (h.identityFile) {
       parts.push(`(key: ${h.identityFile})`);
     }
-    if (h.proxyJump) {
-      parts.push(`(via: ${h.proxyJump})`);
-    }
     return parts.join(" ");
   });
 

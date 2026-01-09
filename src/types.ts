@@ -8,7 +8,6 @@ export interface SSHHost {
   user: string;
   password?: string;
   identityFile?: string;
-  proxyJump?: string;
 }
 
 /**
@@ -18,7 +17,8 @@ export interface DirectConnectionOptions {
   username?: string;
   password?: string;
   port?: number;
-  privateKey?: string;
+  /** Path to private key file (will be read and used for authentication) */
+  privateKeyPath?: string;
 }
 
 /**
@@ -55,6 +55,5 @@ export interface SSHConnectionOptions {
   username: string;
   privateKey?: Buffer;
   agent?: string;
-  proxyJump?: string;
   timeout?: number;
 }

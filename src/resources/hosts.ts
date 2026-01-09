@@ -65,7 +65,6 @@ export function getHostResourceContent(hostName: string): string {
       port: host.port,
       user: host.user,
       identityFile: host.identityFile,
-      proxyJump: host.proxyJump,
     },
     null,
     2

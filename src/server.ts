@@ -83,6 +83,11 @@ export function createServer(): Server {
                 type: "number",
                 description: "SSH port for direct connection (default: 22)",
               },
+              privateKeyPath: {
+                type: "string",
+                description:
+                  "Path to SSH private key file for direct connection",
+              },
             },
             required: ["hosts", "command"],
             additionalProperties: false,
@@ -128,6 +133,11 @@ export function createServer(): Server {
                 type: "number",
                 description: "SSH port for direct connection (default: 22)",
               },
+              privateKeyPath: {
+                type: "string",
+                description:
+                  "Path to SSH private key file for direct connection",
+              },
             },
             required: ["direction", "hosts", "localPath", "remotePath"],
             additionalProperties: false,
@@ -156,13 +166,14 @@ export function createServer(): Server {
         }
 
         case "ssh_execute": {
-          const { hosts, command, timeout, username, password, port } = args as {
+          const { hosts, command, timeout, username, password, port, privateKeyPath } = args as {
             hosts: string[];
             command: string;
             timeout?: number;
             username?: string;
             password?: string;
             port?: number;
+            privateKeyPath?: string;
           };
 
           if (!hosts || hosts.length === 0) {
@@ -172,8 +183,8 @@ export function createServer(): Server {
             throw new Error("Command is required");
           }
 
-          const directOptions = (username || password || port)
-            ? { username, password, port }
+          const directOptions = (username || password || port || privateKeyPath)
+            ? { username, password, port, privateKeyPath }
             : undefined;
 
           const results = await execute(hosts, command, timeout, directOptions);
@@ -188,7 +199,7 @@ export function createServer(): Server {
         }
 
         case "ssh_transfer": {
-          const { direction, hosts, localPath, remotePath, username, password, port } = args as {
+          const { direction, hosts, localPath, remotePath, username, password, port, privateKeyPath } = args as {
             direction: "upload" | "download";
             hosts: string[];
             localPath: string;
@@ -196,6 +207,7 @@ export function createServer(): Server {
             username?: string;
             password?: string;
             port?: number;
+            privateKeyPath?: string;
           };
 
           if (!direction || !["upload", "download"].includes(direction)) {
@@ -208,8 +220,8 @@ export function createServer(): Server {
             throw new Error("Both localPath and remotePath are required");
           }
 
-          const directOptions = (username || password || port)
-            ? { username, password, port }
+          const directOptions = (username || password || port || privateKeyPath)
+            ? { username, password, port, privateKeyPath }
             : undefined;
 
           const results = await transfer(direction, hosts, localPath, remotePath, directOptions);

@@ -1,8 +1,15 @@
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, statSync } from "fs";
 import { homedir } from "os";
 import SSHConfigParser from "ssh-config";
 import type { SSHHost } from "../types.js";
 import { getConfig } from "../config.js";
+
+/**
+ * Cache for parsed SSH config
+ */
+let _cachedHosts: SSHHost[] | null = null;
+let _cachedConfigPath: string | null = null;
+let _cachedMtime: number | null = null;
 
 /**
  * Get SSH config file path from config
@@ -12,12 +19,36 @@ export function getSSHConfigPath(): string {
 }
 
 /**
- * Parse SSH config file and return list of hosts
+ * Check if cache is valid (same path and file not modified)
+ */
+function isCacheValid(configPath: string): boolean {
+  if (!_cachedHosts || _cachedConfigPath !== configPath) {
+    return false;
+  }
+
+  try {
+    const stat = statSync(configPath);
+    return stat.mtimeMs === _cachedMtime;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Parse SSH config file and return list of hosts (with caching)
  */
 export function parseSSHConfig(): SSHHost[] {
   const configPath = getSSHConfigPath();
 
+  // Return cached result if valid
+  if (isCacheValid(configPath)) {
+    return _cachedHosts!;
+  }
+
   if (!existsSync(configPath)) {
+    _cachedHosts = [];
+    _cachedConfigPath = configPath;
+    _cachedMtime = null;
     return [];
   }
 
@@ -26,13 +57,17 @@ export function parseSSHConfig(): SSHHost[] {
   const hosts: SSHHost[] = [];
 
   for (const section of config) {
-    // Only process Host sections (type 1)
-    if (section.type !== 1) continue;
+    // Only process Host sections (type 1, param === "Host")
+    if (section.type !== 1 || section.param !== "Host") continue;
 
-    const hostParam = section.param;
-    if (!hostParam || hostParam === "*") continue;
+    const hostValue = section.value;
+    if (!hostValue || hostValue === "*") continue;
 
-    const hostnames = Array.isArray(hostParam) ? hostParam : [hostParam];
+    // Normalize hostValue to string array
+    const rawHostnames = Array.isArray(hostValue) ? hostValue : [hostValue];
+    const hostnames: string[] = rawHostnames.map((h) => 
+      typeof h === "string" ? h : h.val
+    );
 
     for (const name of hostnames) {
       // Skip wildcard patterns
@@ -46,18 +81,39 @@ export function parseSSHConfig(): SSHHost[] {
         return val;
       };
 
+      // Get identity file path, handling both string and string[] cases
+      const identityFileRaw = getString(computed.IdentityFile);
+      const identityFile = identityFileRaw?.replace("~", homedir());
+
       hosts.push({
         name,
         hostname: getString(computed.HostName) || name,
         port: parseInt(getString(computed.Port) || "22", 10),
-        user: getString(computed.User) || process.env.USER || "root",
-        identityFile: computed.IdentityFile?.[0]?.replace("~", homedir()),
-        proxyJump: getString(computed.ProxyJump),
+        user: getString(computed.User) || process.env.USER || process.env.USERNAME || "root",
+        identityFile,
       });
     }
   }
 
+  // Update cache
+  _cachedHosts = hosts;
+  _cachedConfigPath = configPath;
+  try {
+    _cachedMtime = statSync(configPath).mtimeMs;
+  } catch {
+    _cachedMtime = null;
+  }
+
   return hosts;
+}
+
+/**
+ * Clear SSH config cache (for testing or when config changes)
+ */
+export function clearSSHConfigCache(): void {
+  _cachedHosts = null;
+  _cachedConfigPath = null;
+  _cachedMtime = null;
 }
 
 /**
@@ -80,6 +136,6 @@ export function resolveHost(nameOrHostname: string): SSHHost {
     name: nameOrHostname,
     hostname: nameOrHostname,
     port: 22,
-    user: process.env.USER || "root",
+    user: process.env.USER || process.env.USERNAME || "root",
   };
 }
