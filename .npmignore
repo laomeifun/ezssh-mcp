@@ -1,0 +1,13 @@
+# Source files (dist is enough)
+src/
+
+# Test files
+test-schema-validation.mjs
+
+# Config files
+tsconfig.json
+.github/
+
+# Development files
+*.log
+.DS_Store
