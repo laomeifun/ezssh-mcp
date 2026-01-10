@@ -16,6 +16,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write  # Required for npm provenance
 
     steps:
       - name: Checkout repository
@@ -40,8 +41,8 @@ jobs:
         if: ${{ github.event.inputs.version != '' }}
         run: npm version ${{ github.event.inputs.version }} --no-git-tag-version
 
-      - name: Publish to npmjs
-        run: npm publish --access public
+      - name: Publish to npmjs with provenance
+        run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
