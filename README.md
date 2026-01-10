@@ -14,6 +14,12 @@ Easy SSH MCP Server - Execute commands and transfer files via SSH with AI assist
 
 ## Installation
 
+### From npm (Recommended)
+
+```bash
+npm install -g ezssh-mcp
+```
+
 ### From GitHub Packages
 
 ```bash

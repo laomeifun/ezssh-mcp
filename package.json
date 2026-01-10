@@ -1,5 +1,5 @@
 {
-  "name": "@laomeifun/ezssh-mcp",
+  "name": "ezssh-mcp",
   "version": "1.0.0",
   "description": "Easy SSH MCP Server - Execute commands and transfer files via SSH with AI",
   "main": "dist/index.js",
@@ -33,7 +33,7 @@
   },
   "homepage": "https://github.com/laomeifun/ezssh-mcp",
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
