@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write  # Required for npm provenance
+      id-token: write  # Required for npm OIDC trusted publishing
 
     steps:
       - name: Checkout repository
@@ -41,9 +41,11 @@ jobs:
         if: ${{ github.event.inputs.version != '' }}
         run: npm version ${{ github.event.inputs.version }} --no-git-tag-version
 
-      - name: Publish to npmjs with provenance
+      - name: Publish to npmjs (OIDC Trusted Publishing)
         run: npm publish --access public --provenance
         env:
+          # First publish requires NPM_TOKEN, after that OIDC will work
+          # Once trusted publisher is configured, you can remove this line
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Setup Node.js for GitHub Packages
