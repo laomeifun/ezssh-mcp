@@ -1,5 +1,8 @@
 # ezssh-mcp
 
+[![npm version](https://img.shields.io/npm/v/ezssh-mcp.svg)](https://www.npmjs.com/package/ezssh-mcp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Easy SSH MCP Server - Execute commands and transfer files via SSH with AI assistance.
 
 ## Features
@@ -10,7 +13,7 @@ Easy SSH MCP Server - Execute commands and transfer files via SSH with AI assist
 - ⚡ **Concurrent execution**: Run commands on multiple hosts simultaneously
 - 📁 **File transfer**: Upload/download via SFTP
 - 🔗 **MCP Resources**: SSH hosts exposed as resources for AI access
-- 🤖 **Multi-AI compatible**: OpenAI, Claude, Gemini
+- 🤖 **Multi-AI compatible**: Works with Claude, ChatGPT, Gemini and other MCP-compatible clients
 
 ## Installation
 
@@ -18,16 +21,6 @@ Easy SSH MCP Server - Execute commands and transfer files via SSH with AI assist
 
 ```bash
 npm install -g ezssh-mcp
-```
-
-### From GitHub Packages
-
-```bash
-# Configure npm to use GitHub Packages for @laomeifun scope
-echo "@laomeifun:registry=https://npm.pkg.github.com" >> ~/.npmrc
-
-# Install globally
-npm install -g @laomeifun/ezssh-mcp
 ```
 
 ### From Source
@@ -39,24 +32,38 @@ npm install
 npm run build
 ```
 
-## Usage
+## Quick Start
 
-### As MCP Server
+### 1. Run as MCP Server
 
 ```bash
-npm start
+ezssh-mcp
+# or
+npx ezssh-mcp
 ```
 
-### Claude Desktop Configuration
+### 2. Configure with Claude Desktop
 
-Add to `claude_desktop_config.json`:
+Add to your `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "ssh": {
-      "command": "node",
-      "args": ["/path/to/ezssh-mcp/dist/index.js"]
+      "command": "npx",
+      "args": ["-y", "ezssh-mcp"]
+    }
+  }
+}
+```
+
+Or if installed globally:
+
+```json
+{
+  "mcpServers": {
+    "ssh": {
+      "command": "ezssh-mcp"
     }
   }
 }
@@ -69,6 +76,53 @@ Add to `claude_desktop_config.json`:
 | `ssh_list_hosts` | List available SSH hosts from config |
 | `ssh_execute` | Execute commands on one or more hosts |
 | `ssh_transfer` | Upload/download files via SFTP |
+
+### ssh_execute
+
+Execute commands on multiple hosts concurrently:
+
+```json
+{
+  "hosts": ["web1", "web2", "web3"],
+  "command": "uptime"
+}
+```
+
+Direct connection (without SSH config):
+
+```json
+{
+  "hosts": ["192.168.1.100"],
+  "command": "uptime",
+  "username": "root",
+  "password": "your-password",
+  "port": 22
+}
+```
+
+### ssh_transfer
+
+Upload files:
+
+```json
+{
+  "direction": "upload",
+  "hosts": ["web1", "web2"],
+  "localPath": "./dist/app.zip",
+  "remotePath": "/opt/app/app.zip"
+}
+```
+
+Download files (with `{host}` placeholder for multiple hosts):
+
+```json
+{
+  "direction": "download",
+  "hosts": ["web1", "web2"],
+  "localPath": "./logs/{host}.log",
+  "remotePath": "/var/log/app.log"
+}
+```
 
 ## Resources
 
@@ -84,6 +138,25 @@ SSH hosts are exposed as MCP resources with URI format `ssh://<host-name>`.
 | `SSH_TIMEOUT` | Connection timeout (ms) | `30000` |
 | `SSH_STRICT_HOST_KEY` | Strict host key checking | `false` |
 | `SSH_MAX_CONCURRENCY` | Max concurrent connections | `10` |
+
+## Development
+
+```bash
+# Install dependencies
+npm install
+
+# Development mode (watch)
+npm run dev
+
+# Build
+npm run build
+
+# Type check
+npm run typecheck
+
+# Run tests
+npm test
+```
 
 ## License
 

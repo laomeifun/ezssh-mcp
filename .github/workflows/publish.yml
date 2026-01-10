@@ -1,18 +1,5 @@
 name: Publish Package
 
-# =============================================================================
-# Trusted Publishing (OIDC) 配置说明:
-# 
-# 1. 登录 https://www.npmjs.com/
-# 2. 进入包页面 -> Settings -> Publishing access
-# 3. 点击 "Link a GitHub repository"
-# 4. 选择仓库: laomeifun/ezssh-mcp
-# 5. 配置:
-#    - Workflow filename: publish.yml
-#    - Environment: (留空)
-# 6. 保存后，可以移除下方的 NPM_TOKEN，实现无 Token 发布
-# =============================================================================
-
 on:
   release:
     types: [created]
@@ -54,12 +41,8 @@ jobs:
         if: ${{ github.event.inputs.version != '' }}
         run: npm version ${{ github.event.inputs.version }} --no-git-tag-version
 
-      - name: Publish to npmjs with provenance
+      - name: Publish to npmjs (OIDC Trusted Publishing)
         run: npm publish --access public --provenance
-        # 配置 Trusted Publishing 后可移除 NODE_AUTH_TOKEN
-        # 参考上方注释完成 npm 网站配置
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Setup Node.js for GitHub Packages
         uses: actions/setup-node@v4

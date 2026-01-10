@@ -1,8 +1,14 @@
 # ezssh-mcp
 
+[![npm version](https://img.shields.io/npm/v/ezssh-mcp.svg)](https://www.npmjs.com/package/ezssh-mcp)
+
 ## 项目概述
 
 这是一个基于 Model Context Protocol (MCP) 的 SSH 服务器，用于管理和控制 SSH 连接。它可以与 Claude Desktop 和其他 MCP 兼容的客户端无缝集成，提供 AI 驱动的 SSH 操作。
+
+**npm 包**: https://www.npmjs.com/package/ezssh-mcp
+
+**GitHub**: https://github.com/laomeifun/ezssh-mcp
 
 ## 功能特性
 
@@ -126,7 +132,17 @@
 
 ## 安装
 
+### 从 npm 安装（推荐）
+
 ```bash
+npm install -g ezssh-mcp
+```
+
+### 从源码安装
+
+```bash
+git clone https://github.com/laomeifun/ezssh-mcp.git
+cd ezssh-mcp
 npm install
 npm run build
 ```
@@ -136,7 +152,9 @@ npm run build
 ### 作为 MCP 服务器运行
 
 ```bash
-npm start
+ezssh-mcp
+# 或
+npx ezssh-mcp
 ```
 
 ### Claude Desktop 配置
@@ -147,8 +165,20 @@ npm start
 {
   "mcpServers": {
     "ssh": {
-      "command": "node",
-      "args": ["/path/to/ezssh-mcp/dist/index.js"]
+      "command": "npx",
+      "args": ["-y", "ezssh-mcp"]
+    }
+  }
+}
+```
+
+或者全局安装后：
+
+```json
+{
+  "mcpServers": {
+    "ssh": {
+      "command": "ezssh-mcp"
     }
   }
 }
@@ -157,7 +187,7 @@ npm start
 ### 自定义 SSH 配置路径
 
 ```bash
-SSH_CONFIG_PATH=/path/to/ssh_config npm start
+SSH_CONFIG_PATH=/path/to/ssh_config ezssh-mcp
 ```
 
 ## 开发
