@@ -14,7 +14,21 @@ Easy SSH MCP Server - Execute commands and transfer files via SSH with AI assist
 
 ## Installation
 
+### From GitHub Packages
+
 ```bash
+# Configure npm to use GitHub Packages for @laomeifun scope
+echo "@laomeifun:registry=https://npm.pkg.github.com" >> ~/.npmrc
+
+# Install globally
+npm install -g @laomeifun/ezssh-mcp
+```
+
+### From Source
+
+```bash
+git clone https://github.com/laomeifun/ezssh-mcp.git
+cd ezssh-mcp
 npm install
 npm run build
 ```

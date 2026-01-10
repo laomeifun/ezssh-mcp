@@ -1,5 +1,5 @@
 {
-  "name": "ezssh-mcp",
+  "name": "@laomeifun/ezssh-mcp",
   "version": "1.0.0",
   "description": "Easy SSH MCP Server - Execute commands and transfer files via SSH with AI",
   "main": "dist/index.js",
@@ -25,15 +25,15 @@
     "gemini",
     "ai"
   ],
-  "author": "",
+  "author": "laomeifun",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YOUR_USERNAME/ezssh-mcp.git"
+    "url": "git+https://github.com/laomeifun/ezssh-mcp.git"
   },
-  "homepage": "https://github.com/YOUR_USERNAME/ezssh-mcp",
+  "homepage": "https://github.com/laomeifun/ezssh-mcp",
   "publishConfig": {
-    "access": "public"
+    "registry": "https://npm.pkg.github.com"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
