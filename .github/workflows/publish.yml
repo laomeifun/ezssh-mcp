@@ -11,18 +11,17 @@ on:
         type: string
 
 jobs:
-  build-and-publish:
+  publish:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
-      id-token: write  # Required for npm provenance and OIDC trusted publishing
+      id-token: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js for npmjs
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -43,18 +42,3 @@ jobs:
 
       - name: Publish to npmjs (OIDC Trusted Publishing)
         run: npm publish --access public --provenance
-
-      - name: Setup Node.js for GitHub Packages
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          registry-url: 'https://npm.pkg.github.com'
-          scope: '@laomeifun'
-
-      - name: Publish to GitHub Packages
-        run: |
-          # Update package name for GitHub Packages (requires scope)
-          node -e "const pkg=require('./package.json'); pkg.name='@laomeifun/ezssh-mcp'; require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2));"
-          npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
