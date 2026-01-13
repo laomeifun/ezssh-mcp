@@ -50,6 +50,10 @@ async function getTools() {
             type: "number",
             description: "SSH port for direct connection",
           },
+          privateKeyPath: {
+            type: "string",
+            description: "Path to SSH private key file for direct connection",
+          },
         },
         required: ["hosts", "command"],
         additionalProperties: false,
@@ -89,6 +93,10 @@ async function getTools() {
           port: {
             type: "number",
             description: "SSH port",
+          },
+          privateKeyPath: {
+            type: "string",
+            description: "Path to SSH private key file for direct connection",
           },
         },
         required: ["direction", "hosts", "localPath", "remotePath"],

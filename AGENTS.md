@@ -1,35 +1,249 @@
-# ezssh-mcp
+# AGENTS.md - ezssh-mcp
 
-[![npm version](https://img.shields.io/npm/v/ezssh-mcp.svg)](https://www.npmjs.com/package/ezssh-mcp)
+AI 代理在此代码库中工作的指南。
 
 ## 项目概述
 
-这是一个基于 Model Context Protocol (MCP) 的 SSH 服务器，用于管理和控制 SSH 连接。它可以与 Claude Desktop 和其他 MCP 兼容的客户端无缝集成，提供 AI 驱动的 SSH 操作。
+基于 MCP (Model Context Protocol) 的 SSH 服务器，用于管理 SSH 连接。可与 Claude Desktop 及其他 MCP 兼容客户端集成，提供 AI 驱动的 SSH 操作。
 
-**npm 包**: https://www.npmjs.com/package/ezssh-mcp
+- **语言**: TypeScript (ES2022, ESM)
+- **构建工具**: tsup
+- **运行时**: Node.js >= 24.0.0
 
-**GitHub**: https://github.com/laomeifun/ezssh-mcp
+## 设计原则
 
-## 功能特性
+> **MCP 适应性原则：「广泛接受，优雅失败，清晰报告」**
 
-### 跨平台支持
-- ✅ Linux
-- ✅ macOS
-- ✅ Windows
+本项目优先考虑**广泛兼容性**而非严格安全限制：
 
-### SSH Agent 支持
-- ✅ 系统 SSH Agent (`SSH_AUTH_SOCK`)
-- ✅ 1Password SSH Agent
-- ✅ Windows OpenSSH Agent
+- **广泛接受**: 尽可能接受各种输入格式，不做过度验证
+- **优雅失败**: 遇到错误时返回结构化错误对象，不崩溃
+- **清晰报告**: 错误信息应帮助用户理解问题，同时过滤敏感信息
 
-### 自动配置发现
-- 自动读取 `~/.ssh/config` 配置
-- 支持自定义配置路径 (`SSH_CONFIG_PATH` 环境变量)
+### 实践指南
 
-### MCP Resources
-- SSH 主机作为 MCP 资源暴露
-- 资源 URI 格式: `ssh://host-name`
-- AI 可直接读取主机配置信息
+| 场景 | 做法 | 原因 |
+|------|------|------|
+| 输入验证 | 仅验证必要字段，不过度限制 | 保持对多样化 SSH 环境的兼容 |
+| 错误处理 | 返回 `{ success: false, error: "..." }` | 让调用方决定如何处理 |
+| 敏感信息 | 使用 `sanitizeError()` 过滤密码等 | 安全与适应性的平衡 |
+| 超时/限制 | 使用合理默认值，允许覆盖 | 不同环境需求不同 |
+
+## 构建 / 测试 / 检查命令
+
+```bash
+# 安装依赖
+npm install
+
+# 构建（输出到 dist/）
+npm run build          # tsup src/index.ts --format esm --dts --clean
+
+# 开发模式（监听文件变化）
+npm run dev            # tsup src/index.ts --format esm --watch
+
+# 类型检查
+npm run typecheck      # tsc --noEmit
+
+# 运行测试
+npm test               # node test-schema-validation.mjs
+
+# 启动 MCP 服务器
+npm start              # node dist/index.js
+```
+
+### 运行单个测试
+
+项目使用自定义测试脚本 (`test-schema-validation.mjs`)，验证 MCP 工具 schema 与 OpenAI、Claude、Gemini 的兼容性。没有测试框架，直接运行整个脚本：
+
+```bash
+node test-schema-validation.mjs
+```
+
+## 代码风格指南
+
+### 导入规范
+
+1. **相对导入必须使用 `.js` 扩展名**（ESM 要求）：
+   ```typescript
+   // 正确
+   import { startServer } from "./server.js";
+   import type { SSHHost } from "../types.js";
+   
+   // 错误
+   import { startServer } from "./server";
+   ```
+
+2. **导入顺序**：先外部包，后内部模块
+   ```typescript
+   import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+   import { Client } from "ssh2";
+   import { getConfig } from "../config.js";
+   import type { SSHHost } from "../types.js";
+   ```
+
+3. **类型导入使用 `import type`**：
+   ```typescript
+   import type { SSHHost, ExecuteResult } from "../types.js";
+   ```
+
+### 命名规范
+
+| 元素 | 规范 | 示例 |
+|------|------|------|
+| 文件名 | kebab-case | `list-hosts.ts`, `ssh-client.ts` |
+| 函数名 | camelCase | `createConnectConfig`, `formatExecuteOutput` |
+| 变量名 | camelCase | `hostName`, `configPath` |
+| 类型/接口 | PascalCase | `SSHHost`, `ExecuteResult` |
+| 常量 | camelCase 或 UPPER_SNAKE | `SSH_RESOURCE_PREFIX` |
+
+### 导出规范
+
+- **仅使用命名导出**（禁止默认导出）：
+  ```typescript
+  // 正确
+  export function connect(...) { }
+  export interface SSHHost { }
+  
+  // 错误
+  export default function connect(...) { }
+  ```
+
+### 类型注解
+
+- **公开函数必须显式声明返回类型**：
+  ```typescript
+  export function createServer(): Server { }
+  export async function execute(...): Promise<ExecuteResult[]> { }
+  ```
+
+- **Schema 中使用 `as const`** 进行字面量类型推断：
+  ```typescript
+  type: "object" as const,
+  ```
+
+### 错误处理
+
+1. **工具处理器中禁止抛出异常** - 返回结构化错误对象：
+   ```typescript
+   // 正确
+   return {
+     host: hostName,
+     success: false,
+     error: err instanceof Error ? err.message : String(err),
+   };
+   
+   // 错误
+   throw new Error("Connection failed");
+   ```
+
+2. **MCP 工具执行需要 try/catch 包裹**，返回用户友好的错误：
+   ```typescript
+   try {
+     // 工具逻辑
+   } catch (error) {
+     return {
+       content: [{ type: "text", text: `Error: ${error.message}` }],
+       isError: true,
+     };
+   }
+   ```
+
+3. **可选操作允许空 catch 块**（如缓存操作）：
+   ```typescript
+   try {
+     _cachedMtime = statSync(configPath).mtimeMs;
+   } catch {
+     _cachedMtime = null;
+   }
+   ```
+
+### 格式规范
+
+- **2 空格**缩进
+- **双引号**字符串
+- **必须使用分号**
+- **多行结构使用尾逗号**
+
+## 架构
+
+```
+src/
+├── index.ts          # 入口 - 启动服务器
+├── server.ts         # MCP 协议层（schema、请求路由）
+├── config.ts         # 环境配置
+├── types.ts          # 共享类型定义
+├── utils.ts          # 工具函数（如 runWithConcurrency）
+├── tools/            # 工具实现
+│   ├── execute.ts    # ssh_execute 工具
+│   ├── transfer.ts   # ssh_transfer 工具
+│   └── list-hosts.ts # ssh_list_hosts 工具
+├── ssh/              # SSH 核心层
+│   ├── client.ts     # SSH 连接、命令执行、SFTP
+│   ├── config.ts     # SSH 配置解析（~/.ssh/config）
+│   └── agent.ts      # SSH Agent 检测（跨平台）
+└── resources/        # MCP 资源
+    └── hosts.ts      # SSH 主机作为 MCP 资源
+```
+
+### 层级职责
+
+| 层级 | 职责 |
+|------|------|
+| `server.ts` | MCP 协议处理、工具注册、请求路由 |
+| `tools/*.ts` | 业务逻辑、输入验证、输出格式化 |
+| `ssh/*.ts` | 底层 SSH 操作（ssh2 封装） |
+| `resources/*.ts` | MCP 资源定义 |
+
+### 添加新工具
+
+1. 在 `src/tools/new-tool.ts` 创建工具逻辑：
+   ```typescript
+   import type { SomeResult } from "../types.js";
+   
+   export async function newTool(...): Promise<SomeResult[]> { }
+   export function formatNewToolOutput(results: SomeResult[]): string { }
+   ```
+
+2. 在 `src/server.ts` 注册：
+   - 在 `ListToolsRequestSchema` 处理器中添加 schema 定义
+   - 在 `CallToolRequestSchema` 处理器中添加执行 case
+
+3. 如需要，在 `src/types.ts` 添加类型定义
+
+## 关键模式
+
+### 并发控制
+
+批量操作使用 `runWithConcurrency`：
+```typescript
+import { runWithConcurrency } from "../utils.js";
+
+const results = await runWithConcurrency(
+  hosts,
+  (host) => executeCommand(host, command),
+  maxConcurrency
+);
+```
+
+### 配置访问
+
+通过懒加载单例访问：
+```typescript
+import { getConfig } from "../config.js";
+
+const config = getConfig();
+const timeout = config.timeout;
+```
+
+### SSH 主机解析
+
+支持配置名或直接主机名：
+```typescript
+import { resolveHost } from "./ssh/config.js";
+
+const host = resolveHost("web1");  // 从 ~/.ssh/config
+const host = resolveHost("192.168.1.100");  // 直接连接
+```
 
 ## 环境变量
 
@@ -42,174 +256,24 @@
 | `SSH_STRICT_HOST_KEY` | 严格检查主机密钥 | `false` |
 | `SSH_MAX_CONCURRENCY` | 最大并发连接数 | `10` |
 
-## 资源列表
+## 常见任务
 
-### SSH 主机资源
-- **URI 格式**: `ssh://<host-name>`
-- **MIME 类型**: `application/json`
-- **内容**: 主机配置详情（hostname, port, user, identityFile 等）
-
-## 工具列表
-
-### 1. `ssh_list_hosts`
-列出所有可用的 SSH 主机。
-
-**参数**: 无
-
-**返回**: 主机列表，包含名称、地址、用户、端口等信息
-
----
-
-### 2. `ssh_execute`
-在一个或多个 SSH 主机上执行命令。
-
-**参数**:
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `hosts` | `string[]` | ✅ | 主机名列表或 IP 地址 |
-| `command` | `string` | ✅ | 要执行的命令 |
-| `timeout` | `number` | ❌ | 连接超时（毫秒，默认 30000） |
-| `username` | `string` | ❌ | SSH 用户名（直接连接时使用） |
-| `password` | `string` | ❌ | SSH 密码（直接连接时使用，注意安全） |
-| `port` | `number` | ❌ | SSH 端口（默认 22） |
-
-**示例（使用配置文件）**:
-```json
-{
-  "hosts": ["web1", "web2", "web3"],
-  "command": "uptime"
-}
-```
-
-**示例（直接连接）**:
-```json
-{
-  "hosts": ["192.168.1.100"],
-  "command": "uptime",
-  "username": "root",
-  "password": "your-password",
-  "port": 22
-}
-```
-
----
-
-### 3. `ssh_transfer`
-在本地和远程主机之间传输文件。
-
-**参数**:
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `direction` | `"upload" \| "download"` | ✅ | 传输方向 |
-| `hosts` | `string[]` | ✅ | 主机名列表 |
-| `localPath` | `string` | ✅ | 本地文件路径 |
-| `remotePath` | `string` | ✅ | 远程文件路径 |
-
-**上传示例**:
-```json
-{
-  "direction": "upload",
-  "hosts": ["web1", "web2"],
-  "localPath": "./dist/app.zip",
-  "remotePath": "/opt/app/app.zip"
-}
-```
-
-**下载示例**（多主机）:
-```json
-{
-  "direction": "download",
-  "hosts": ["web1", "web2"],
-  "localPath": "./logs/{host}.log",
-  "remotePath": "/var/log/app.log"
-}
-```
-
-**下载规则**:
-- 单主机：`localPath` 原样使用
-- 多主机 + `{host}` 占位符：替换为主机名
-- 多主机 + 无占位符：自动添加 `_主机名` 后缀
-
-## 安装
-
-### 从 npm 安装（推荐）
+### 验证更改
 
 ```bash
-npm install -g ezssh-mcp
+npm run typecheck && npm test && npm run build
 ```
 
-### 从源码安装
+### 本地测试 MCP 服务器
 
 ```bash
-git clone https://github.com/laomeifun/ezssh-mcp.git
-cd ezssh-mcp
-npm install
-npm run build
+npm run build && npm start
 ```
 
-## 使用
+## 禁止事项
 
-### 作为 MCP 服务器运行
-
-```bash
-ezssh-mcp
-# 或
-npx ezssh-mcp
-```
-
-### Claude Desktop 配置
-
-在 `claude_desktop_config.json` 中添加：
-
-```json
-{
-  "mcpServers": {
-    "ssh": {
-      "command": "npx",
-      "args": ["-y", "ezssh-mcp"]
-    }
-  }
-}
-```
-
-或者全局安装后：
-
-```json
-{
-  "mcpServers": {
-    "ssh": {
-      "command": "ezssh-mcp"
-    }
-  }
-}
-```
-
-### 自定义 SSH 配置路径
-
-```bash
-SSH_CONFIG_PATH=/path/to/ssh_config ezssh-mcp
-```
-
-## 开发
-
-```bash
-# 开发模式（监听文件变化）
-npm run dev
-
-# 类型检查
-npm run typecheck
-
-# 构建
-npm run build
-```
-
-## 技术栈
-
-- **语言**: TypeScript
-- **SSH 库**: ssh2 (纯 JavaScript，跨平台)
-- **MCP SDK**: @modelcontextprotocol/sdk
-- **构建工具**: tsup
-
-## 许可证
-
-MIT
+- 使用 `as any`、`@ts-ignore`、`@ts-expect-error`
+- 使用默认导出
+- 相对导入省略 `.js` 扩展名
+- 在工具处理器中抛出异常（应返回错误对象）
+- 提交 `dist/` 或 `node_modules/`

@@ -22,7 +22,7 @@ export function createServer(): Server {
   const server = new Server(
     {
       name: "mcp-ssh",
-      version: "3.0.0",
+      version: "1.1.0",
     },
     {
       capabilities: {
@@ -182,6 +182,13 @@ export function createServer(): Server {
           if (!command) {
             throw new Error("Command is required");
           }
+          if (typeof command !== "string") {
+            throw new Error("Command must be a string");
+          }
+          const MAX_COMMAND_LENGTH = 100000;
+          if (command.length > MAX_COMMAND_LENGTH) {
+            throw new Error(`Command too long (max ${MAX_COMMAND_LENGTH} characters)`);
+          }
 
           const directOptions = (username || password || port || privateKeyPath)
             ? { username, password, port, privateKeyPath }
@@ -253,30 +260,55 @@ export function createServer(): Server {
 
   // List available resources (SSH hosts)
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    const resources = getHostResources();
-    return { resources };
+    try {
+      const resources = getHostResources();
+      return { resources };
+    } catch {
+      return { resources: [] };
+    }
   });
 
   // Read resource content
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const { uri } = request.params;
-    const hostName = parseHostUri(uri);
 
-    if (!hostName) {
-      throw new Error(`Invalid resource URI: ${uri}`);
+    try {
+      const hostName = parseHostUri(uri);
+
+      if (!hostName) {
+        return {
+          contents: [
+            {
+              uri,
+              mimeType: "application/json",
+              text: JSON.stringify({ error: `Invalid resource URI: ${uri}` }),
+            },
+          ],
+        };
+      }
+
+      const content = getHostResourceContent(hostName);
+
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: "application/json",
+            text: content,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+          },
+        ],
+      };
     }
-
-    const content = getHostResourceContent(hostName);
-
-    return {
-      contents: [
-        {
-          uri,
-          mimeType: "application/json",
-          text: content,
-        },
-      ],
-    };
   });
 
   return server;

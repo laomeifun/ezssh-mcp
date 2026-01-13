@@ -1,27 +1,38 @@
-import { basename, dirname, extname, join } from "path";
+import { basename, dirname, extname, join, normalize } from "path";
 import { uploadFile, downloadFile } from "../ssh/client.js";
 import { getConfig } from "../config.js";
 import { runWithConcurrency } from "../utils.js";
 import type { TransferResult, DirectConnectionOptions } from "../types.js";
 
-/**
- * Resolve local path with {host} placeholder
- */
+// Only allow safe characters in host names to prevent path traversal
+const SAFE_HOST_PATTERN = /^[a-zA-Z0-9._-]+$/;
+
+function sanitizeHostName(host: string): string {
+  if (SAFE_HOST_PATTERN.test(host)) {
+    return host;
+  }
+  return host.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
 function resolveLocalPath(localPath: string, host: string): string {
   if (localPath.includes("{host}")) {
-    return localPath.replace(/\{host\}/g, host);
+    const sanitizedHost = sanitizeHostName(host);
+    const resolved = localPath.replace(/\{host\}/g, sanitizedHost);
+    const normalized = normalize(resolved);
+    if (normalized.includes("..")) {
+      throw new Error(`Invalid path after host substitution: ${normalized}`);
+    }
+    return resolved;
   }
   return localPath;
 }
 
-/**
- * Add host suffix to filename for multi-host downloads
- */
 function addHostSuffix(localPath: string, host: string): string {
+  const sanitizedHost = sanitizeHostName(host);
   const dir = dirname(localPath);
   const ext = extname(localPath);
   const base = basename(localPath, ext);
-  return join(dir, `${base}_${host}${ext}`);
+  return join(dir, `${base}_${sanitizedHost}${ext}`);
 }
 
 /**

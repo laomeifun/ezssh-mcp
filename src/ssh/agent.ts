@@ -13,18 +13,13 @@ export function getSSHAgentSocket(): string | undefined {
 
   // 2. Windows-specific named pipes
   if (platform() === "win32") {
-    // 1Password SSH Agent
-    const onePasswordPipe = "\\\\.\\pipe\\openssh-ssh-agent";
-    // Windows OpenSSH Agent
-    const openSSHPipe = "\\\\.\\pipe\\openssh-ssh-agent";
-
-    // Check 1Password first (common for developers)
+    // Check 1Password environment variable first
     if (process.env.OP_SSH_AUTH_SOCK) {
       return process.env.OP_SSH_AUTH_SOCK;
     }
 
-    // Return OpenSSH pipe (it's the standard on Windows)
-    return openSSHPipe;
+    // Windows OpenSSH Agent (standard pipe)
+    return "\\\\.\\pipe\\openssh-ssh-agent";
   }
 
   // 3. macOS - check common locations

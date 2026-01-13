@@ -8,10 +8,26 @@ import { runWithConcurrency } from "../utils.js";
 import type { SSHHost, ExecuteResult, TransferResult, DirectConnectionOptions } from "../types.js";
 
 /**
- * Parse known_hosts file and return a map of host -> key data
+ * Sanitize error messages to prevent credential leaks
+ * Removes passwords, keys, and other sensitive data from error messages
  */
-function parseKnownHosts(knownHostsPath: string): Map<string, string[]> {
-  const hostKeys = new Map<string, string[]>();
+function sanitizeError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return message
+    .replace(/password[=:\s]+\S+/gi, "password: [REDACTED]")
+    .replace(/key[=:\s]+\S+/gi, "key: [REDACTED]")
+    .replace(/secret[=:\s]+\S+/gi, "secret: [REDACTED]")
+    .replace(/token[=:\s]+\S+/gi, "token: [REDACTED]")
+    .replace(/auth[=:\s]+\S+/gi, "auth: [REDACTED]");
+}
+
+interface KnownHostKey {
+  keyType: string;
+  keyData: string;
+}
+
+function parseKnownHosts(knownHostsPath: string): Map<string, KnownHostKey[]> {
+  const hostKeys = new Map<string, KnownHostKey[]>();
   
   if (!existsSync(knownHostsPath)) {
     return hostKeys;
@@ -32,9 +48,8 @@ function parseKnownHosts(knownHostsPath: string): Map<string, string[]> {
       const keyData = parts[2];
       
       for (const hostname of hostnames) {
-        // Handle hashed hostnames (start with |1|)
         const existing = hostKeys.get(hostname) || [];
-        existing.push(`${keyType} ${keyData}`);
+        existing.push({ keyType, keyData });
         hostKeys.set(hostname, existing);
       }
     }
@@ -68,25 +83,20 @@ function createHostVerifier(
   ].filter(Boolean) as string[];
 
   return (key: Buffer): boolean => {
-    // Get the key fingerprint for comparison
     const keyBase64 = key.toString("base64");
     
     for (const hostVariant of hostVariants) {
       const knownKeys = knownHosts.get(hostVariant);
       if (knownKeys) {
-        // Check if any known key matches
         for (const knownKey of knownKeys) {
-          const parts = knownKey.split(" ");
-          if (parts.length >= 2 && parts[1] === keyBase64) {
+          if (knownKey.keyData === keyBase64) {
             return true;
           }
         }
-        // Host found but key doesn't match - reject
         return false;
       }
     }
     
-    // Host not in known_hosts - reject in strict mode
     return false;
   };
 }
@@ -156,13 +166,32 @@ export function connect(
     host = applyDirectOptions(host, directOptions);
     const config = createConnectConfig(host, timeout);
     const client = new Client();
+    let settled = false;
+
+    const cleanup = () => {
+      if (!settled) {
+        settled = true;
+        client.end();
+      }
+    };
 
     client.on("ready", () => {
-      resolve(client);
+      if (!settled) {
+        settled = true;
+        resolve(client);
+      }
     });
 
     client.on("error", (err) => {
+      cleanup();
       reject(err);
+    });
+
+    client.on("close", () => {
+      if (!settled) {
+        cleanup();
+        reject(new Error("Connection closed unexpectedly"));
+      }
     });
 
     client.connect(config);
@@ -192,7 +221,7 @@ export async function executeCommand(
           resolve({
             host: hostName,
             success: false,
-            error: err.message,
+            error: sanitizeError(err),
           });
           return;
         }
@@ -222,7 +251,7 @@ export async function executeCommand(
     return {
       host: hostName,
       success: false,
-      error: err instanceof Error ? err.message : String(err),
+      error: sanitizeError(err),
     };
   }
 }
@@ -268,7 +297,7 @@ export async function uploadFile(
             success: false,
             localPath,
             remotePath,
-            error: err.message,
+            error: sanitizeError(err),
           });
           return;
         }
@@ -281,7 +310,7 @@ export async function uploadFile(
               success: false,
               localPath,
               remotePath,
-              error: err.message,
+              error: sanitizeError(err),
             });
           } else {
             resolve({
@@ -301,7 +330,7 @@ export async function uploadFile(
       success: false,
       localPath,
       remotePath,
-      error: err instanceof Error ? err.message : String(err),
+      error: sanitizeError(err),
     };
   }
 }
@@ -335,7 +364,7 @@ export async function downloadFile(
             success: false,
             localPath,
             remotePath,
-            error: err.message,
+            error: sanitizeError(err),
           });
           return;
         }
@@ -348,7 +377,7 @@ export async function downloadFile(
               success: false,
               localPath,
               remotePath,
-              error: err.message,
+              error: sanitizeError(err),
             });
           } else {
             resolve({
@@ -368,7 +397,7 @@ export async function downloadFile(
       success: false,
       localPath,
       remotePath,
-      error: err instanceof Error ? err.message : String(err),
+      error: sanitizeError(err),
     };
   }
 }

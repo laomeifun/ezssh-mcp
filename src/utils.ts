@@ -6,12 +6,14 @@ export async function runWithConcurrency<T, R>(
   fn: (item: T) => Promise<R>,
   concurrency: number
 ): Promise<R[]> {
-  const results: R[] = [];
+  const results: (R | undefined)[] = new Array(items.length);
   const executing: Set<Promise<void>> = new Set();
 
-  for (const item of items) {
+  for (let i = 0; i < items.length; i++) {
+    const index = i;
+    const item = items[i];
     const promise = fn(item).then((result) => {
-      results.push(result);
+      results[index] = result;
     }).finally(() => {
       executing.delete(promise);
     });
@@ -24,5 +26,5 @@ export async function runWithConcurrency<T, R>(
   }
 
   await Promise.all(executing);
-  return results;
+  return results as R[];
 }

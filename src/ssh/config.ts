@@ -40,7 +40,6 @@ function isCacheValid(configPath: string): boolean {
 export function parseSSHConfig(): SSHHost[] {
   const configPath = getSSHConfigPath();
 
-  // Return cached result if valid
   if (isCacheValid(configPath)) {
     return _cachedHosts!;
   }
@@ -52,59 +51,60 @@ export function parseSSHConfig(): SSHHost[] {
     return [];
   }
 
-  const content = readFileSync(configPath, "utf-8");
-  const config = SSHConfigParser.parse(content);
-  const hosts: SSHHost[] = [];
-
-  for (const section of config) {
-    // Only process Host sections (type 1, param === "Host")
-    if (section.type !== 1 || section.param !== "Host") continue;
-
-    const hostValue = section.value;
-    if (!hostValue || hostValue === "*") continue;
-
-    // Normalize hostValue to string array
-    const rawHostnames = Array.isArray(hostValue) ? hostValue : [hostValue];
-    const hostnames: string[] = rawHostnames.map((h) => 
-      typeof h === "string" ? h : h.val
-    );
-
-    for (const name of hostnames) {
-      // Skip wildcard patterns
-      if (name.includes("*") || name.includes("?")) continue;
-
-      const computed = config.compute(name);
-
-      // Helper to get first value from string | string[]
-      const getString = (val: string | string[] | undefined): string | undefined => {
-        if (Array.isArray(val)) return val[0];
-        return val;
-      };
-
-      // Get identity file path, handling both string and string[] cases
-      const identityFileRaw = getString(computed.IdentityFile);
-      const identityFile = identityFileRaw?.replace("~", homedir());
-
-      hosts.push({
-        name,
-        hostname: getString(computed.HostName) || name,
-        port: parseInt(getString(computed.Port) || "22", 10),
-        user: getString(computed.User) || process.env.USER || process.env.USERNAME || "root",
-        identityFile,
-      });
-    }
-  }
-
-  // Update cache
-  _cachedHosts = hosts;
-  _cachedConfigPath = configPath;
   try {
-    _cachedMtime = statSync(configPath).mtimeMs;
-  } catch {
-    _cachedMtime = null;
-  }
+    const content = readFileSync(configPath, "utf-8");
+    const config = SSHConfigParser.parse(content);
+    const hosts: SSHHost[] = [];
 
-  return hosts;
+    for (const section of config) {
+      if (section.type !== 1 || section.param !== "Host") continue;
+
+      const hostValue = section.value;
+      if (!hostValue || hostValue === "*") continue;
+
+      const rawHostnames = Array.isArray(hostValue) ? hostValue : [hostValue];
+      const hostnames: string[] = rawHostnames.map((h) => 
+        typeof h === "string" ? h : h.val
+      );
+
+      for (const name of hostnames) {
+        if (name.includes("*") || name.includes("?")) continue;
+
+        const computed = config.compute(name);
+
+        const getString = (val: string | string[] | undefined): string | undefined => {
+          if (Array.isArray(val)) return val[0];
+          return val;
+        };
+
+        const identityFileRaw = getString(computed.IdentityFile);
+        const identityFile = identityFileRaw?.replace("~", homedir());
+
+        hosts.push({
+          name,
+          hostname: getString(computed.HostName) || name,
+          port: parseInt(getString(computed.Port) || "22", 10),
+          user: getString(computed.User) || process.env.USER || process.env.USERNAME || "root",
+          identityFile,
+        });
+      }
+    }
+
+    _cachedHosts = hosts;
+    _cachedConfigPath = configPath;
+    try {
+      _cachedMtime = statSync(configPath).mtimeMs;
+    } catch {
+      _cachedMtime = null;
+    }
+
+    return hosts;
+  } catch {
+    _cachedHosts = [];
+    _cachedConfigPath = configPath;
+    _cachedMtime = null;
+    return [];
+  }
 }
 
 /**
