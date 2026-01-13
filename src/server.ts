@@ -1,8 +1,6 @@
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -12,14 +10,16 @@ import { transfer, formatTransferOutput } from "./tools/transfer.js";
 import {
   getHostResources,
   getHostResourceContent,
+  createHostUri,
   parseHostUri,
 } from "./resources/hosts.js";
+import { executeSchema, transferSchema } from "./tools/schemas.js";
+import type { DirectConnectionOptions } from "./types.js";
 
-/**
- * Create and configure MCP Server
- */
-export function createServer(): Server {
-  const server = new Server(
+const MAX_COMMAND_LENGTH = 100000;
+
+export function createServer(): McpServer {
+  const server = new McpServer(
     {
       name: "mcp-ssh",
       version: "1.1.0",
@@ -32,294 +32,171 @@ export function createServer(): Server {
     }
   );
 
-  // List available tools
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return {
-      tools: [
-        {
-          name: "ssh_list_hosts",
-          description:
-            "List all available SSH hosts from ~/.ssh/config. Returns host names, addresses, users, and connection details.",
-          inputSchema: {
-            type: "object" as const,
-            properties: {},
-            required: [],
-            additionalProperties: false,
-          },
-        },
-        {
-          name: "ssh_execute",
-          description:
-            "Execute a command on one or more SSH hosts. Runs concurrently on multiple hosts and returns results from each.",
-          inputSchema: {
-            type: "object" as const,
-            properties: {
-              hosts: {
-                type: "array",
-                items: { type: "string" },
-                description:
-                  "List of host names (from ssh_list_hosts) or IP addresses/hostnames to execute on",
-              },
-              command: {
-                type: "string",
-                description: "The shell command to execute",
-              },
-              timeout: {
-                type: "number",
-                description:
-                  "Connection timeout in milliseconds (default: 30000)",
-              },
-              username: {
-                type: "string",
-                description:
-                  "SSH username for direct connection (overrides config)",
-              },
-              password: {
-                type: "string",
-                description:
-                  "SSH password for direct connection (use with caution)",
-              },
-              port: {
-                type: "number",
-                description: "SSH port for direct connection (default: 22)",
-              },
-              privateKeyPath: {
-                type: "string",
-                description:
-                  "Path to SSH private key file for direct connection",
-              },
-            },
-            required: ["hosts", "command"],
-            additionalProperties: false,
-          },
-        },
-        {
-          name: "ssh_transfer",
-          description:
-            "Transfer files between local machine and remote SSH hosts. Supports upload to multiple hosts or download from multiple hosts.",
-          inputSchema: {
-            type: "object" as const,
-            properties: {
-              direction: {
-                type: "string",
-                enum: ["upload", "download"],
-                description: "Transfer direction: upload or download",
-              },
-              hosts: {
-                type: "array",
-                items: { type: "string" },
-                description: "List of host names or IP addresses to transfer files to/from",
-              },
-              localPath: {
-                type: "string",
-                description:
-                  "Local file path. For multi-host downloads, use {host} placeholder (e.g., ./logs/{host}.log) or files will be auto-suffixed with hostname",
-              },
-              remotePath: {
-                type: "string",
-                description: "Remote file path on the SSH host",
-              },
-              username: {
-                type: "string",
-                description:
-                  "SSH username for direct connection (overrides config)",
-              },
-              password: {
-                type: "string",
-                description:
-                  "SSH password for direct connection (use with caution)",
-              },
-              port: {
-                type: "number",
-                description: "SSH port for direct connection (default: 22)",
-              },
-              privateKeyPath: {
-                type: "string",
-                description:
-                  "Path to SSH private key file for direct connection",
-              },
-            },
-            required: ["direction", "hosts", "localPath", "remotePath"],
-            additionalProperties: false,
-          },
-        },
-      ],
-    };
-  });
-
-  // Handle tool calls
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
-
-    try {
-      switch (name) {
-        case "ssh_list_hosts": {
-          const hosts = listHosts();
-          return {
-            content: [
-              {
-                type: "text",
-                text: formatHostsOutput(hosts),
-              },
-            ],
-          };
-        }
-
-        case "ssh_execute": {
-          const { hosts, command, timeout, username, password, port, privateKeyPath } = args as {
-            hosts: string[];
-            command: string;
-            timeout?: number;
-            username?: string;
-            password?: string;
-            port?: number;
-            privateKeyPath?: string;
-          };
-
-          if (!hosts || hosts.length === 0) {
-            throw new Error("At least one host is required");
-          }
-          if (!command) {
-            throw new Error("Command is required");
-          }
-          if (typeof command !== "string") {
-            throw new Error("Command must be a string");
-          }
-          const MAX_COMMAND_LENGTH = 100000;
-          if (command.length > MAX_COMMAND_LENGTH) {
-            throw new Error(`Command too long (max ${MAX_COMMAND_LENGTH} characters)`);
-          }
-
-          const directOptions = (username || password || port || privateKeyPath)
-            ? { username, password, port, privateKeyPath }
-            : undefined;
-
-          const results = await execute(hosts, command, timeout, directOptions);
-          return {
-            content: [
-              {
-                type: "text",
-                text: formatExecuteOutput(results),
-              },
-            ],
-          };
-        }
-
-        case "ssh_transfer": {
-          const { direction, hosts, localPath, remotePath, username, password, port, privateKeyPath } = args as {
-            direction: "upload" | "download";
-            hosts: string[];
-            localPath: string;
-            remotePath: string;
-            username?: string;
-            password?: string;
-            port?: number;
-            privateKeyPath?: string;
-          };
-
-          if (!direction || !["upload", "download"].includes(direction)) {
-            throw new Error("Direction must be 'upload' or 'download'");
-          }
-          if (!hosts || hosts.length === 0) {
-            throw new Error("At least one host is required");
-          }
-          if (!localPath || !remotePath) {
-            throw new Error("Both localPath and remotePath are required");
-          }
-
-          const directOptions = (username || password || port || privateKeyPath)
-            ? { username, password, port, privateKeyPath }
-            : undefined;
-
-          const results = await transfer(direction, hosts, localPath, remotePath, directOptions);
-          return {
-            content: [
-              {
-                type: "text",
-                text: formatTransferOutput(results, direction),
-              },
-            ],
-          };
-        }
-
-        default:
-          throw new Error(`Unknown tool: ${name}`);
-      }
-    } catch (error) {
+  server.registerTool(
+    "ssh_list_hosts",
+    {
+      description:
+        "List all available SSH hosts from ~/.ssh/config. Returns host names, addresses, users, and connection details.",
+    },
+    async () => {
+      const hosts = listHosts();
       return {
         content: [
           {
             type: "text",
-            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+            text: formatHostsOutput(hosts),
           },
         ],
-        isError: true,
       };
     }
-  });
+  );
 
-  // List available resources (SSH hosts)
-  server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    try {
-      const resources = getHostResources();
-      return { resources };
-    } catch {
-      return { resources: [] };
+  server.registerTool(
+    "ssh_execute",
+    {
+      description:
+        "Execute a command on one or more SSH hosts. Runs concurrently on multiple hosts and returns results from each.",
+      inputSchema: executeSchema,
+    },
+    async (args) => {
+      const { hosts, command, timeout, username, password, port, privateKeyPath } = args;
+
+      if (!hosts || hosts.length === 0) {
+        return {
+          content: [{ type: "text", text: "Error: At least one host is required" }],
+          isError: true,
+        };
+      }
+      if (!command) {
+        return {
+          content: [{ type: "text", text: "Error: Command is required" }],
+          isError: true,
+        };
+      }
+      if (command.length > MAX_COMMAND_LENGTH) {
+        return {
+          content: [{ type: "text", text: `Error: Command too long (max ${MAX_COMMAND_LENGTH} characters)` }],
+          isError: true,
+        };
+      }
+
+      const directOptions: DirectConnectionOptions | undefined =
+        username || password || port || privateKeyPath
+          ? { username, password, port, privateKeyPath }
+          : undefined;
+
+      const results = await execute(hosts, command, timeout, directOptions);
+      return {
+        content: [
+          {
+            type: "text",
+            text: formatExecuteOutput(results),
+          },
+        ],
+      };
     }
-  });
+  );
 
-  // Read resource content
-  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-    const { uri } = request.params;
+  server.registerTool(
+    "ssh_transfer",
+    {
+      description:
+        "Transfer files between local machine and remote SSH hosts. Supports upload to multiple hosts or download from multiple hosts.",
+      inputSchema: transferSchema,
+    },
+    async (args) => {
+      const { direction, hosts, localPath, remotePath, username, password, port, privateKeyPath } = args;
 
-    try {
-      const hostName = parseHostUri(uri);
+      if (!hosts || hosts.length === 0) {
+        return {
+          content: [{ type: "text", text: "Error: At least one host is required" }],
+          isError: true,
+        };
+      }
+      if (!localPath || !remotePath) {
+        return {
+          content: [{ type: "text", text: "Error: Both localPath and remotePath are required" }],
+          isError: true,
+        };
+      }
 
-      if (!hostName) {
+      const directOptions: DirectConnectionOptions | undefined =
+        username || password || port || privateKeyPath
+          ? { username, password, port, privateKeyPath }
+          : undefined;
+
+      const results = await transfer(direction, hosts, localPath, remotePath, directOptions);
+      return {
+        content: [
+          {
+            type: "text",
+            text: formatTransferOutput(results, direction),
+          },
+        ],
+      };
+    }
+  );
+
+  const hostResources = getHostResources();
+  for (const resource of hostResources) {
+    server.registerResource(
+      resource.name,
+      resource.uri,
+      {
+        description: resource.description,
+        mimeType: resource.mimeType,
+      },
+      async () => {
+        const content = getHostResourceContent(resource.name);
         return {
           contents: [
             {
-              uri,
+              uri: resource.uri,
               mimeType: "application/json",
-              text: JSON.stringify({ error: `Invalid resource URI: ${uri}` }),
+              text: content,
             },
           ],
         };
       }
+    );
+  }
 
-      const content = getHostResourceContent(hostName);
+  // Ensure resources handlers are set even when no hosts are configured
+  if (hostResources.length === 0) {
+    server.server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+      resources: [],
+    }));
 
+    server.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+      const uri = request.params.uri;
+      const hostName = parseHostUri(uri);
       return {
         contents: [
           {
             uri,
             mimeType: "application/json",
-            text: content,
+            text: JSON.stringify({ error: `Host '${hostName}' not found` }, null, 2),
           },
         ],
       };
-    } catch (error) {
-      return {
-        contents: [
-          {
-            uri,
-            mimeType: "application/json",
-            text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
-          },
-        ],
-      };
-    }
-  });
+    });
+  }
 
   return server;
 }
 
-/**
- * Start the MCP server
- */
 export async function startServer(): Promise<void> {
   const server = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("MCP SSH Server started");
+
+  const shutdown = async (): Promise<void> => {
+    console.error("Shutting down...");
+    await server.close();
+    process.exit(0);
+  };
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
